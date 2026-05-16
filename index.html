@@ -349,7 +349,7 @@ header{position:sticky;top:0;z-index:200;background:rgba(8,12,24,0.96);backdrop-
 // ── ESTADO ────────────────────────────────────────────────
 let products = [], monitored = [], cmpSel = [], cQuery = '', cTab = 'kw';
 
-const ML = 'https://api.mercadolibre.com';
+const ML = '';
 const fmtR = v => 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 const stars = r => r ? '★'.repeat(Math.round(r)) + '☆'.repeat(5 - Math.round(r)) : '—';
 
@@ -383,7 +383,7 @@ async function doSearch() {
 async function searchKw(q) {
   setLoading(true); cQuery = q;
   try {
-    const r = await fetch(`${ML}/sites/MLB/search?q=${encodeURIComponent(q)}&limit=20`);
+    const r = await fetch(`/api/ml?q=${encodeURIComponent(q)}`);
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
     const items = d.results || [];
@@ -410,7 +410,7 @@ async function searchById(input) {
   const id = m[0].toUpperCase();
   setLoading(true);
   try {
-    const r = await fetch(`${ML}/items/${id}`);
+    const r = await fetch(`/api/ml?id=${id}`);
     if (!r.ok) throw new Error();
     const it = await r.json();
     const mon = { id: it.id, title: it.title, price: it.price, url: it.permalink };
