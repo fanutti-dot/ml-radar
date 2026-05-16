@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ML Radar — Análise de Concorrência</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#080c18;--surface:#0f1523;--surface2:#161e30;--surface3:#1c2640;
+  --border:#1e2d45;--border2:#263550;
+  --accent:#FFE600;--accent2:#00D4FF;--accent3:#FF6B35;
+  --text:#e8edf5;--muted:#5a6a88;--muted2:#8899bb;
+  --success:#00c897;--danger:#ff4757;--purple:#a78bfa;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background:
+  radial-gradient(ellipse 70% 50% at 85% 5%,rgba(52,131,250,0.06) 0%,transparent 60%),
+  radial-gradient(ellipse 60% 60% at 5% 95%,rgba(255,230,0,0.04) 0%,transparent 60%);
+  pointer-events:none;z-index:0;}
+
+header{position:sticky;top:0;z-index:200;background:rgba(8,12,24,0.96);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:12px 24px;}
+.logo{display:flex;align-items:center;gap:10px;font-family:'Space Mono',monospace;font-weight:700;font-size:17px;}
+.logo-badge{width:30px;height:30px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px;}
+.logo em{color:var(--accent);font-style:normal;}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 8px var(--success);animation:blink 2s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+.hdr-lbl{font-size:11px;color:var(--muted2);font-family:'Space Mono',monospace;}
+
+.nav-tabs{display:flex;gap:0;padding:0 24px;background:rgba(8,12,24,0.92);border-bottom:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.nav-tabs::-webkit-scrollbar{display:none;}
+.ntab{padding:10px 18px;font-size:13px;font-weight:600;color:var(--muted2);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;font-family:'Syne',sans-serif;white-space:nowrap;flex-shrink:0;}
+.ntab.on{color:var(--accent);border-bottom-color:var(--accent);}
+
+.app{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:24px 20px;display:grid;gap:18px;}
+.page{display:none;grid:inherit;gap:inherit;}
+.page.on{display:grid;}
+
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px;}
+.pt{font-size:15px;font-weight:700;}
+.pb{padding:20px;}
+.mlbl{font-size:10px;font-family:'Space Mono',monospace;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;}
+
+/* search */
+.tab-toggle{display:flex;gap:4px;background:var(--bg);border-radius:9px;padding:4px;width:fit-content;margin-bottom:16px;}
+.ttbtn{padding:7px 16px;border-radius:6px;border:none;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--muted2);transition:all .2s;}
+.ttbtn.on{background:var(--accent);color:#000;}
+.srow{display:flex;gap:10px;}
+.si{flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:9px;padding:12px 16px;font-family:'Syne',sans-serif;font-size:14px;color:var(--text);outline:none;transition:border-color .2s;-webkit-appearance:none;}
+.si:focus{border-color:var(--accent);}
+.si::placeholder{color:var(--muted);}
+.sbtn{padding:12px 22px;background:var(--accent);color:#000;border:none;border-radius:9px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap;}
+.sbtn:active{transform:scale(.98);}
+.sbtn:disabled{opacity:.45;cursor:not-allowed;}
+.qtags{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap;}
+.qtag{padding:5px 12px;border-radius:20px;border:1px solid var(--border);font-size:11px;color:var(--muted2);cursor:pointer;background:none;font-family:'Space Mono',monospace;transition:all .2s;}
+.qtag:active{border-color:var(--accent);color:var(--accent);}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
+@media(min-width:700px){.stats{grid-template-columns:repeat(4,1fr);}}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;position:relative;overflow:hidden;}
+.stat::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--sc,var(--accent));}
+.stat:nth-child(2){--sc:var(--accent2);}
+.stat:nth-child(3){--sc:var(--accent3);}
+.stat:nth-child(4){--sc:var(--success);}
+.slbl{font-size:10px;font-family:'Space Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:7px;}
+.sval{font-size:22px;font-weight:800;line-height:1;}
+.ssub{font-size:11px;color:var(--muted2);font-family:'Space Mono',monospace;margin-top:5px;}
+
+/* toolbar */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.sort-btn{padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--muted2);font-size:11px;cursor:pointer;font-family:'Space Mono',monospace;transition:all .2s;}
+.sort-btn.on,.sort-btn:active{border-color:var(--accent);color:var(--accent);background:rgba(255,230,0,.05);}
+.act-btn{padding:6px 14px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:'Syne',sans-serif;transition:all .2s;display:flex;align-items:center;gap:5px;}
+.act-btn:active{transform:scale(.98);}
+.act-btn.primary{background:var(--accent);color:#000;border-color:var(--accent);}
+
+/* table */
+.tbl-head{display:grid;grid-template-columns:32px 1fr auto auto;gap:10px;padding:10px 18px;background:var(--bg);font-size:10px;font-family:'Space Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+@media(min-width:700px){
+  .tbl-head{grid-template-columns:32px 2fr 1fr 1fr 1fr 1fr 80px;}
+  .p-row{grid-template-columns:32px 2fr 1fr 1fr 1fr 1fr 80px !important;}
+  .p-hide{display:block !important;}
+}
+.p-row{display:grid;grid-template-columns:32px 1fr auto auto;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);align-items:center;transition:background .15s;animation:rIn .35s ease both;}
+@keyframes rIn{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
+.p-row:last-child{border-bottom:none;}
+.p-row:hover{background:var(--surface2);}
+.rank{width:24px;height:24px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--muted);font-family:'Space Mono',monospace;}
+.rank.g{background:rgba(255,230,0,.15);color:var(--accent);}
+.rank.s{background:rgba(0,212,255,.1);color:var(--accent2);}
+.rank.b{background:rgba(255,107,53,.1);color:var(--accent3);}
+.pname{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;}
+.pseller{font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;}
+.pprice{font-weight:700;font-size:14px;}
+.pdiff{font-size:11px;font-family:'Space Mono',monospace;}
+.up{color:var(--danger);}
+.dn{color:var(--success);}
+.eq{color:var(--muted2);}
+.stars{color:var(--accent);font-size:11px;letter-spacing:-2px;}
+.sold{font-family:'Space Mono',monospace;font-size:12px;color:var(--accent2);}
+.p-hide{display:none;}
+.tg{font-size:9px;padding:2px 6px;border-radius:3px;margin-left:4px;display:inline;}
+.tg-g{background:rgba(0,200,151,.12);color:var(--success);}
+.tg-n{background:var(--surface2);color:var(--muted2);}
+.va{padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--muted2);font-size:11px;cursor:pointer;font-family:'Space Mono',monospace;text-decoration:none;display:inline-block;transition:all .2s;}
+.va:hover{border-color:var(--accent2);color:var(--accent2);}
+.cmp-chk{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;}
+.cmp-bar{padding:8px 18px;background:rgba(255,230,0,.05);border-bottom:1px solid var(--border);display:none;align-items:center;gap:12px;font-size:12px;color:var(--muted2);}
+.cmp-bar.on{display:flex;}
+
+/* compare */
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.cmp-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.cmp-ch{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.cmp-badge{width:22px;height:22px;border-radius:6px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.ba{background:rgba(255,230,0,.15);color:var(--accent);}
+.bb{background:rgba(0,212,255,.15);color:var(--accent2);}
+.cmp-pname{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cmp-seller{font-size:10px;color:var(--muted);}
+.cmp-body{padding:14px 16px;}
+.cmp-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.cmp-row:last-child{border-bottom:none;}
+.cmp-k{color:var(--muted2);}
+.cmp-v{font-weight:700;}
+.cmp-win{color:var(--success);}
+.cmp-lose{color:var(--danger);}
+.verdict{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;font-size:13px;color:var(--muted2);line-height:1.7;}
+.verdict strong{color:var(--text);}
+
+/* insights */
+.ins-grid{display:grid;grid-template-columns:1fr;gap:14px;}
+@media(min-width:700px){.ins-grid{grid-template-columns:1fr 1fr;}}
+.ins-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;}
+.ins-hdr{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.ins-icon{font-size:18px;}
+.ins-title{font-size:14px;font-weight:700;}
+.ins-body{font-size:13px;color:var(--muted2);line-height:1.75;}
+.ins-body strong{color:var(--text);}
+.hist{display:flex;align-items:flex-end;gap:3px;height:60px;margin-top:12px;}
+.hbar{flex:1;border-radius:2px 2px 0 0;background:rgba(52,131,250,.4);transition:background .2s;}
+.hbar.hi{background:var(--accent);}
+.hlbls{display:flex;justify-content:space-between;margin-top:5px;font-size:9px;font-family:'Space Mono',monospace;color:var(--muted);}
+
+/* monitored */
+.mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:14px;}
+.mon-item{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:8px;animation:rIn .3s ease both;}
+.mon-info{flex:1;overflow:hidden;}
+.mon-title{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mon-id{font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;}
+.mon-price{font-weight:700;color:var(--accent);font-size:13px;margin:0 8px;white-space:nowrap;}
+.rmbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px;transition:color .2s;line-height:1;}
+.rmbtn:hover{color:var(--danger);}
+
+/* states */
+.loading{display:none;flex-direction:column;align-items:center;justify-content:center;padding:50px;gap:14px;}
+.loading.on{display:flex;}
+.spin{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg)}}
+.ltxt{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px;gap:10px;color:var(--muted);}
+.eicon{font-size:40px;opacity:.3;}
+.etxt{font-size:13px;font-family:'Space Mono',monospace;}
+
+/* toast */
+.toasts{position:fixed;bottom:20px;right:20px;left:20px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+@media(min-width:500px){.toasts{left:auto;width:300px;}}
+.toast{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:11px 15px;font-size:12px;font-family:'Space Mono',monospace;animation:tIn .25s ease;pointer-events:auto;}
+@keyframes tIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+.toast.ok{border-color:var(--success);color:var(--success);}
+.toast.err{border-color:var(--danger);color:var(--danger);}
+.toast.info{border-color:var(--accent2);color:var(--accent2);}
+
+/* export modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;}
+.modal-bg.on{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:26px;width:100%;max-width:380px;}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:18px;}
+.modal-opts{display:grid;gap:10px;margin-bottom:18px;}
+.mopt{display:flex;align-items:center;gap:12px;padding:13px 15px;border-radius:10px;border:1px solid var(--border);cursor:pointer;transition:border-color .2s;}
+.mopt:hover{border-color:var(--accent);}
+.mopt input{accent-color:var(--accent);}
+.mopt-t{font-size:13px;font-weight:600;}
+.mopt-s{font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;}
+.mbtns{display:flex;gap:10px;justify-content:flex-end;}
+.mcnl{padding:10px 18px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--muted2);cursor:pointer;font-family:'Syne',sans-serif;font-size:13px;}
+.mgo{padding:10px 20px;border-radius:8px;background:var(--accent);color:#000;border:none;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;}
+.mgo:active{transform:scale(.98);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-badge">📡</div>
+    ML<em>Radar</em>
+  </div>
+  <div class="hdr-right">
+    <div class="live-dot"></div>
+    <span class="hdr-lbl">Mercado Livre 🇧🇷</span>
+  </div>
+</header>
+
+<nav class="nav-tabs">
+  <button class="ntab on" onclick="nav('search')">🔍 Busca</button>
+  <button class="ntab" onclick="nav('compare')">⚖️ Comparar</button>
+  <button class="ntab" onclick="nav('insights')">📊 Insights</button>
+  <button class="ntab" onclick="nav('monitored')">📌 Monitorados</button>
+</nav>
+
+<div class="app">
+
+  <!-- BUSCA -->
+  <div class="page on" id="p-search">
+
+    <div class="panel">
+      <div class="pb">
+        <div class="mlbl">// busca de concorrentes</div>
+        <div class="tab-toggle">
+          <button class="ttbtn on" onclick="switchTab('kw',this)">🔍 Palavra-chave</button>
+          <button class="ttbtn" onclick="switchTab('id',this)">🔗 ID / URL</button>
+        </div>
+        <div class="srow">
+          <input class="si" type="search" id="si" placeholder="Ex: tênis nike, iphone 15..." onkeydown="if(event.key==='Enter')doSearch()">
+          <button class="sbtn" id="sbtn" onclick="doSearch()">Buscar →</button>
+        </div>
+        <div class="qtags" id="qt-kw">
+          <button class="qtag" onclick="qs('tênis nike')">tênis nike</button>
+          <button class="qtag" onclick="qs('iphone 15')">iphone 15</button>
+          <button class="qtag" onclick="qs('fone bluetooth')">fone bluetooth</button>
+          <button class="qtag" onclick="qs('notebook gamer')">notebook gamer</button>
+          <button class="qtag" onclick="qs('whey protein')">whey protein</button>
+          <button class="qtag" onclick="qs('cafeteira nespresso')">cafeteira nespresso</button>
+        </div>
+        <div id="qt-id" style="display:none;margin-top:10px;font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;">
+          Cole o ID (MLB123456789) ou a URL completa do anúncio
+        </div>
+      </div>
+    </div>
+
+    <div class="stats" id="stats-row" style="display:none">
+      <div class="stat"><div class="slbl">Produtos</div><div class="sval" id="s-total">—</div><div class="ssub" id="s-query">—</div></div>
+      <div class="stat"><div class="slbl">Menor preço</div><div class="sval" id="s-min">—</div></div>
+      <div class="stat"><div class="slbl">Preço médio</div><div class="sval" id="s-avg">—</div></div>
+      <div class="stat"><div class="slbl">Maior preço</div><div class="sval" id="s-max">—</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph">
+        <span class="pt">Ranking de Concorrentes</span>
+        <div class="toolbar">
+          <button class="sort-btn on" onclick="sortP('rank',this)">Relevância</button>
+          <button class="sort-btn" onclick="sortP('price_asc',this)">Menor $</button>
+          <button class="sort-btn" onclick="sortP('price_desc',this)">Maior $</button>
+          <button class="sort-btn" onclick="sortP('rating',this)">Avaliação</button>
+          <button class="act-btn" onclick="openExport()">📊 Exportar</button>
+        </div>
+      </div>
+      <div class="cmp-bar" id="cmp-bar">
+        <span id="cmp-bar-txt"></span>
+        <button class="act-btn" onclick="goCompare()">⚖️ Comparar selecionados</button>
+      </div>
+      <div class="loading" id="loading"><div class="spin"></div><div class="ltxt">Buscando no Mercado Livre...</div></div>
+      <div class="tbl-head" id="tbl-head" style="display:none">
+        <div>#</div><div>Produto</div>
+        <div class="p-hide">Avaliação</div>
+        <div class="p-hide">Vendas</div>
+        <div>Preço</div><div>vs Média</div>
+        <div class="p-hide">Link</div>
+      </div>
+      <div id="products-list">
+        <div class="empty"><div class="eicon">📊</div><div class="etxt">Faça uma busca para ver os concorrentes</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPARAR -->
+  <div class="page" id="p-compare">
+    <div class="ph" style="background:var(--surface);border:1px solid var(--border);border-radius:14px;">
+      <span class="pt">⚖️ Comparador de Produtos</span>
+      <button class="act-btn" onclick="nav('search')">← Voltar à busca</button>
+    </div>
+    <div class="cmp-grid" id="cmp-grid">
+      <div class="panel"><div class="empty"><div class="eicon">📦</div><div class="etxt">Selecione produtos na busca</div></div></div>
+      <div class="panel"><div class="empty"><div class="eicon">📦</div><div class="etxt">e clique em ⚖️ Comparar</div></div></div>
+    </div>
+    <div class="verdict" id="verdict" style="display:none"></div>
+  </div>
+
+  <!-- INSIGHTS -->
+  <div class="page" id="p-insights">
+    <div class="ph" style="background:var(--surface);border:1px solid var(--border);border-radius:14px;">
+      <span class="pt">📊 Insights Estratégicos</span>
+      <button class="act-btn primary" onclick="buildInsights()">↻ Atualizar análise</button>
+    </div>
+    <div class="ins-grid" id="ins-grid">
+      <div class="ins-card">
+        <div class="ins-hdr"><span class="ins-icon">💡</span><span class="ins-title">Faça uma busca primeiro</span></div>
+        <div class="ins-body" style="color:var(--muted)">Os insights aparecerão aqui após você buscar concorrentes na aba Busca.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MONITORADOS -->
+  <div class="page" id="p-monitored">
+    <div class="panel" style="padding:20px;">
+      <div class="mlbl">// produtos monitorados nesta sessão</div>
+      <div id="mon-container">
+        <div class="empty" style="padding:30px;">
+          <div class="eicon">📌</div>
+          <div class="etxt">Nenhum produto monitorado</div>
+          <div style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;margin-top:6px;">Use a aba Busca com ID/URL para adicionar</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Export Modal -->
+<div class="modal-bg" id="export-modal">
+  <div class="modal">
+    <div class="modal-title">📊 Exportar Dados</div>
+    <div class="modal-opts">
+      <label class="mopt">
+        <input type="radio" name="efmt" value="xlsx" checked>
+        <div><div class="mopt-t">📗 Excel (.xlsx)</div><div class="mopt-s">Planilha com formatação completa</div></div>
+      </label>
+      <label class="mopt">
+        <input type="radio" name="efmt" value="csv">
+        <div><div class="mopt-t">📄 CSV (.csv)</div><div class="mopt-s">Compatível com qualquer planilha</div></div>
+      </label>
+    </div>
+    <div class="mbtns">
+      <button class="mcnl" onclick="closeExport()">Cancelar</button>
+      <button class="mgo" onclick="doExport()">Exportar →</button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+// ── ESTADO ────────────────────────────────────────────────
+let products = [], monitored = [], cmpSel = [], cQuery = '', cTab = 'kw';
+
+const ML = 'https://api.mercadolibre.com';
+const fmtR = v => 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+const stars = r => r ? '★'.repeat(Math.round(r)) + '☆'.repeat(5 - Math.round(r)) : '—';
+
+// ── NAVEGAÇÃO ─────────────────────────────────────────────
+function nav(id) {
+  ['search','compare','insights','monitored'].forEach((p, i) => {
+    document.getElementById('p-' + p).classList.toggle('on', p === id);
+    document.querySelectorAll('.ntab')[i].classList.toggle('on', p === id);
+  });
+  if (id === 'insights') buildInsights();
+}
+
+// ── BUSCA ─────────────────────────────────────────────────
+function switchTab(t, btn) {
+  cTab = t;
+  document.querySelectorAll('.ttbtn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('si').placeholder = t === 'kw' ? 'Ex: tênis nike, iphone 15...' : 'MLB123456789 ou URL do anúncio';
+  document.getElementById('qt-kw').style.display = t === 'kw' ? 'flex' : 'none';
+  document.getElementById('qt-id').style.display = t === 'id' ? 'block' : 'none';
+}
+
+function qs(term) { document.getElementById('si').value = term; doSearch(); }
+
+async function doSearch() {
+  const v = document.getElementById('si').value.trim();
+  if (!v) { toast('Digite algo para buscar', 'err'); return; }
+  cTab === 'id' ? await searchById(v) : await searchKw(v);
+}
+
+async function searchKw(q) {
+  setLoading(true); cQuery = q;
+  try {
+    const r = await fetch(`${ML}/sites/MLB/search?q=${encodeURIComponent(q)}&limit=20`);
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    const items = d.results || [];
+    if (!items.length) { toast('Nenhum resultado encontrado', 'err'); setLoading(false); return; }
+    products = items.map((it, i) => ({
+      rank: i + 1, id: it.id, title: it.title, price: it.price,
+      original_price: it.original_price, seller: it.seller?.nickname || 'Vendedor',
+      rating: it.reviews?.rating_average || null, reviews_count: it.reviews?.total || 0,
+      sold_qty: it.sold_quantity || 0, condition: it.condition,
+      free_shipping: it.shipping?.free_shipping, url: it.permalink,
+    }));
+    cmpSel = [];
+    renderTable(); renderStats(q);
+    toast(`${items.length} produtos encontrados`, 'ok');
+  } catch(e) {
+    toast('Erro ao buscar. Verifique sua conexão.', 'err');
+  }
+  setLoading(false);
+}
+
+async function searchById(input) {
+  const m = input.trim().match(/MLB\d+/i);
+  if (!m) { toast('ID inválido. Use MLB123456789 ou URL.', 'err'); return; }
+  const id = m[0].toUpperCase();
+  setLoading(true);
+  try {
+    const r = await fetch(`${ML}/items/${id}`);
+    if (!r.ok) throw new Error();
+    const it = await r.json();
+    const mon = { id: it.id, title: it.title, price: it.price, url: it.permalink };
+    if (!monitored.find(m => m.id === mon.id)) {
+      monitored.push(mon); renderMonitored();
+      toast('Adicionado ao monitoramento!', 'ok');
+    } else {
+      toast('Produto já monitorado', 'info');
+    }
+    await searchKw(it.title.split(' ').slice(0, 5).join(' '));
+  } catch(e) {
+    toast('Produto não encontrado.', 'err');
+  }
+  setLoading(false);
+}
+
+// ── SORT ──────────────────────────────────────────────────
+function sortP(type, btn) {
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  const p = [...products];
+  if (type === 'price_asc') p.sort((a, b) => a.price - b.price);
+  else if (type === 'price_desc') p.sort((a, b) => b.price - a.price);
+  else if (type === 'rating') p.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  else p.sort((a, b) => a.rank - b.rank);
+  products = p; renderTable();
+}
+
+// ── RENDER TABLE ──────────────────────────────────────────
+function renderTable() {
+  const list = document.getElementById('products-list');
+  document.getElementById('tbl-head').style.display = 'grid';
+  const prices = products.map(p => p.price);
+  const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+
+  list.innerHTML = products.map((p, i) => {
+    const diff = ((p.price - avg) / avg * 100).toFixed(1);
+    const dc = p.price > avg * 1.05 ? 'up' : p.price < avg * 0.95 ? 'dn' : 'eq';
+    const di = p.price > avg * 1.05 ? '↑' : p.price < avg * 0.95 ? '↓' : '→';
+    const rc = i === 0 ? 'g' : i === 1 ? 's' : i === 2 ? 'b' : '';
+    const fs = p.free_shipping ? '<span class="tg tg-g">Frete grátis</span>' : '';
+    const used = p.condition !== 'new' ? '<span class="tg tg-n">Usado</span>' : '';
+    const rat = p.rating ? `<span class="stars">${stars(p.rating)}</span> ${p.rating.toFixed(1)}` : '—';
+    const sold = p.sold_qty > 0 ? p.sold_qty.toLocaleString('pt-BR') : '—';
+    const chk = cmpSel.includes(p.id) ? 'checked' : '';
+    return `<div class="p-row" style="animation-delay:${i * .04}s">
+      <div class="rank ${rc}">${i + 1}</div>
+      <div>
+        <div class="pname">${p.title.slice(0, 65)}${p.title.length > 65 ? '…' : ''}${used}${fs}</div>
+        <div class="pseller">👤 ${p.seller} <input class="cmp-chk" type="checkbox" ${chk} onchange="toggleCmp('${p.id}',this)" title="Selecionar para comparar"></div>
+      </div>
+      <div class="p-hide">${rat}</div>
+      <div class="p-hide sold">${sold}</div>
+      <div class="pprice">${fmtR(p.price)}</div>
+      <div class="pdiff ${dc}">${di}${Math.abs(diff)}%</div>
+      <div class="p-hide"><a class="va" href="${p.url}" target="_blank">Ver →</a></div>
+    </div>`;
+  }).join('');
+}
+
+// ── COMPARE ───────────────────────────────────────────────
+function toggleCmp(id, cb) {
+  if (cb.checked) {
+    if (cmpSel.length >= 2) { cb.checked = false; toast('Selecione no máximo 2 produtos', 'err'); return; }
+    cmpSel.push(id);
+  } else {
+    cmpSel = cmpSel.filter(x => x !== id);
+  }
+  const bar = document.getElementById('cmp-bar');
+  const txt = document.getElementById('cmp-bar-txt');
+  if (cmpSel.length > 0) {
+    bar.classList.add('on');
+    txt.textContent = `${cmpSel.length}/2 produto${cmpSel.length > 1 ? 's' : ''} selecionado${cmpSel.length > 1 ? 's' : ''}`;
+  } else {
+    bar.classList.remove('on');
+  }
+}
+
+function goCompare() {
+  if (cmpSel.length < 2) { toast('Selecione 2 produtos primeiro', 'err'); return; }
+  const a = products.find(p => p.id === cmpSel[0]);
+  const b = products.find(p => p.id === cmpSel[1]);
+  if (!a || !b) return;
+
+  const metrics = [
+    { k:'Preço', va:fmtR(a.price), vb:fmtR(b.price), win:a.price < b.price ? 'a' : a.price > b.price ? 'b' : 'eq' },
+    { k:'Avaliação', va:a.rating?a.rating.toFixed(1)+' ★':'—', vb:b.rating?b.rating.toFixed(1)+' ★':'—', win:a.rating&&b.rating?(a.rating>b.rating?'a':a.rating<b.rating?'b':'eq'):'eq' },
+    { k:'Vendas', va:a.sold_qty.toLocaleString('pt-BR'), vb:b.sold_qty.toLocaleString('pt-BR'), win:a.sold_qty>b.sold_qty?'a':a.sold_qty<b.sold_qty?'b':'eq' },
+    { k:'Frete grátis', va:a.free_shipping?'✅ Sim':'❌ Não', vb:b.free_shipping?'✅ Sim':'❌ Não', win:a.free_shipping&&!b.free_shipping?'a':!a.free_shipping&&b.free_shipping?'b':'eq' },
+    { k:'Condição', va:a.condition==='new'?'Novo':'Usado', vb:b.condition==='new'?'Novo':'Usado', win:'eq' },
+  ];
+
+  const card = (prod, letter) => `
+    <div class="cmp-card">
+      <div class="cmp-ch">
+        <div class="cmp-badge ${letter === 'a' ? 'ba' : 'bb'}">${letter.toUpperCase()}</div>
+        <div><div class="cmp-pname">${prod.title.slice(0, 50)}…</div><div class="cmp-seller">👤 ${prod.seller}</div></div>
+      </div>
+      <div class="cmp-body">
+        ${metrics.map(m => {
+          const v = letter === 'a' ? m.va : m.vb;
+          const isW = m.win === letter, isL = m.win !== 'eq' && m.win !== letter;
+          return `<div class="cmp-row"><span class="cmp-k">${m.k}</span><span class="cmp-v ${isW ? 'cmp-win' : isL ? 'cmp-lose' : ''}">${v}${isW ? ' ✓' : ''}</span></div>`;
+        }).join('')}
+        <div style="margin-top:10px"><a class="va" href="${prod.url}" target="_blank">Ver anúncio →</a></div>
+      </div>
+    </div>`;
+
+  document.getElementById('cmp-grid').innerHTML = card(a, 'a') + card(b, 'b');
+
+  const aW = metrics.filter(m => m.win === 'a').length;
+  const bW = metrics.filter(m => m.win === 'b').length;
+  const winner = aW > bW ? a : bW > aW ? b : null;
+  const vd = document.getElementById('verdict');
+  vd.style.display = 'block';
+  vd.innerHTML = winner
+    ? `🏆 <strong>${winner.title.slice(0, 45)}…</strong> leva vantagem em ${Math.max(aW, bW)} de ${metrics.length} critérios. Diferença de preço: <strong>${fmtR(Math.abs(a.price - b.price))}</strong>.${a.free_shipping !== b.free_shipping ? ` <strong>${a.free_shipping ? a.seller : b.seller}</strong> tem frete grátis — fator decisivo.` : ''}`
+    : '🤝 Produtos equivalentes nos critérios analisados. Avalie fotos, descrição e reputação do vendedor.';
+
+  nav('compare');
+}
+
+// ── INSIGHTS ──────────────────────────────────────────────
+function buildInsights() {
+  if (!products.length) {
+    document.getElementById('ins-grid').innerHTML = `<div class="ins-card"><div class="ins-hdr"><span class="ins-icon">💡</span><span class="ins-title">Faça uma busca primeiro</span></div><div class="ins-body" style="color:var(--muted)">Busque concorrentes na aba Busca para ver os insights aqui.</div></div>`;
+    return;
+  }
+  const prices = products.map(p => p.price).sort((a, b) => a - b);
+  const min = prices[0], max = prices[prices.length - 1];
+  const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+  const median = prices[Math.floor(prices.length / 2)];
+  const spread = ((max - min) / avg * 100).toFixed(0);
+  const rated = products.filter(p => p.rating);
+  const avgR = rated.length ? (rated.reduce((a, p) => a + p.rating, 0) / rated.length).toFixed(1) : null;
+  const lowR = products.filter(p => p.rating && p.rating < 4).length;
+  const fsp = Math.round(products.filter(p => p.free_shipping).length / products.length * 100);
+  const top = products.reduce((a, p) => p.sold_qty > a.sold_qty ? p : a, products[0]);
+  const soldTotal = products.reduce((a, p) => a + (p.sold_qty || 0), 0);
+  const cheaperCount = products.filter(p => p.price < avg * 0.9).length;
+  const noFS = products.filter(p => !p.free_shipping).length;
+  const entryPrice = (avg * 0.93).toFixed(2);
+
+  const bins = 7, step = (max - min) / bins || 1;
+  const counts = Array(bins).fill(0);
+  prices.forEach(p => { const b = Math.min(Math.floor((p - min) / step), bins - 1); counts[b]++; });
+  const mc = Math.max(...counts);
+  const hist = `<div class="hist">${counts.map((c, i) => `<div class="hbar${c === mc ? ' hi' : ''}" style="height:${mc > 0 ? Math.max(4, (c / mc) * 56) : 4}px" title="${c} produto${c !== 1 ? 's' : ''}"></div>`).join('')}</div><div class="hlbls"><span>${fmtR(min)}</span><span>${fmtR(max)}</span></div>`;
+
+  document.getElementById('ins-grid').innerHTML = `
+    <div class="ins-card">
+      <div class="ins-hdr"><span class="ins-icon">💰</span><span class="ins-title">Análise de Preços</span></div>
+      <div class="ins-body">
+        Faixa: <strong>${fmtR(min)}</strong> → <strong>${fmtR(max)}</strong><br>
+        Média: <strong>${fmtR(avg)}</strong> | Mediana: <strong>${fmtR(median)}</strong><br>
+        Dispersão: <strong>${spread}%</strong> — ${spread > 50 ? 'mercado fragmentado, alta oportunidade de diferenciação' : spread > 25 ? 'mercado moderado, há espaço de posicionamento' : 'mercado concentrado, preço é fator decisivo'}
+      </div>
+      ${hist}
+    </div>
+    <div class="ins-card">
+      <div class="ins-hdr"><span class="ins-icon">📦</span><span class="ins-title">Vendas e Frete</span></div>
+      <div class="ins-body">
+        Total de vendas monitoradas: <strong>${soldTotal.toLocaleString('pt-BR')}</strong><br>
+        Líder: <strong>${top.title.slice(0, 35)}…</strong><br>
+        Vendas do líder: <strong>${(top.sold_qty || 0).toLocaleString('pt-BR')}</strong><br>
+        Frete grátis: <strong>${fsp}%</strong> dos anúncios — ${fsp > 70 ? '⚠️ praticamente obrigatório' : fsp > 40 ? '📌 diferencial relevante' : '✅ pode ser seu diferencial'}
+      </div>
+    </div>
+    <div class="ins-card">
+      <div class="ins-hdr"><span class="ins-icon">⭐</span><span class="ins-title">Avaliações</span></div>
+      <div class="ins-body">
+        Média de avaliações: <strong>${avgR ? avgR + ' ★' : 'Dados insuficientes'}</strong><br>
+        Com nota &lt;4★: <strong>${lowR} produto${lowR !== 1 ? 's' : ''}</strong><br>
+        Sem avaliação: <strong>${products.length - rated.length}</strong><br>
+        ${lowR > 0 ? `💡 <strong>${lowR} concorrente${lowR > 1 ? 's têm' : ' tem'} avaliação fraca</strong> — espaço para se destacar pela qualidade.` : '✅ Concorrentes bem avaliados — invista em diferenciais além do preço.'}
+      </div>
+    </div>
+    <div class="ins-card">
+      <div class="ins-hdr"><span class="ins-icon">🎯</span><span class="ins-title">Estratégia Recomendada</span></div>
+      <div class="ins-body">
+        ${cheaperCount > 3
+          ? `⚡ <strong>Mercado com guerra de preços.</strong> Entre na faixa de ${fmtR(min)} a ${fmtR(median)} com foco em atendimento e qualidade.`
+          : `🎯 <strong>Oportunidade de posicionamento.</strong> O mercado aceita até ${fmtR(avg)} — há espaço para uma proposta de valor diferenciada.`}
+        <br><br>
+        Preço sugerido de entrada: <strong>${fmtR(Number(entryPrice))}</strong><br>
+        Diferencial recomendado: ${fsp < 60 ? '📦 Ofereça frete grátis' : '⭐ Invista em avaliações e reputação'}<br>
+        ${noFS > 0 ? `${noFS} concorrente${noFS > 1 ? 's' : ''} sem frete grátis — pode ser seu diferencial.` : ''}
+      </div>
+    </div>`;
+}
+
+// ── STATS ─────────────────────────────────────────────────
+function renderStats(q) {
+  const prices = products.map(p => p.price);
+  document.getElementById('stats-row').style.display = 'grid';
+  document.getElementById('s-total').textContent = products.length;
+  document.getElementById('s-query').textContent = '"' + q + '"';
+  document.getElementById('s-min').textContent = fmtR(Math.min(...prices));
+  document.getElementById('s-avg').textContent = fmtR(prices.reduce((a, b) => a + b, 0) / prices.length);
+  document.getElementById('s-max').textContent = fmtR(Math.max(...prices));
+}
+
+// ── EXPORT ────────────────────────────────────────────────
+function openExport() {
+  if (!products.length) { toast('Faça uma busca primeiro!', 'err'); return; }
+  document.getElementById('export-modal').classList.add('on');
+}
+function closeExport() { document.getElementById('export-modal').classList.remove('on'); }
+
+function doExport() {
+  const fmt = document.querySelector('input[name="efmt"]:checked').value;
+  closeExport();
+  fmt === 'xlsx' ? exportXLSX() : exportCSV();
+}
+
+function getRows() {
+  return products.map(p => ({
+    'Posição': p.rank, 'ID': p.id, 'Título': p.title, 'Vendedor': p.seller,
+    'Preço (R$)': p.price, 'Avaliação': p.rating || '', 'Nº Avaliações': p.reviews_count,
+    'Vendas': p.sold_qty, 'Frete Grátis': p.free_shipping ? 'Sim' : 'Não',
+    'Condição': p.condition === 'new' ? 'Novo' : 'Usado', 'Link': p.url,
+    'Data': new Date().toLocaleString('pt-BR'),
+  }));
+}
+
+function exportXLSX() {
+  try {
+    const rows = getRows();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{wch:8},{wch:16},{wch:55},{wch:22},{wch:14},{wch:12},{wch:14},{wch:10},{wch:14},{wch:10},{wch:50},{wch:20}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Concorrentes ML');
+
+    const prices = products.map(p => p.price);
+    const ws2 = XLSX.utils.aoa_to_sheet([
+      ['ML Radar — Relatório'], [''],
+      ['Busca', cQuery], ['Data', new Date().toLocaleString('pt-BR')],
+      ['Total', products.length],
+      ['Menor preço', Math.min(...prices)],
+      ['Preço médio', (prices.reduce((a,b)=>a+b,0)/prices.length).toFixed(2)],
+      ['Maior preço', Math.max(...prices)],
+      ['% Frete grátis', Math.round(products.filter(p=>p.free_shipping).length/products.length*100)+'%'],
+    ]);
+    ws2['!cols'] = [{wch:20},{wch:30}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Resumo');
+    XLSX.writeFile(wb, `ml-radar-${cQuery.replace(/\s+/g,'-')}-${Date.now()}.xlsx`);
+    toast('Excel exportado!', 'ok');
+  } catch(e) { toast('Erro ao exportar Excel.', 'err'); }
+}
+
+function exportCSV() {
+  const rows = getRows();
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(','), ...rows.map(r => headers.map(h => `"${String(r[h]).replace(/"/g,'""')}"`).join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = `ml-radar-${cQuery.replace(/\s+/g,'-')}-${Date.now()}.csv`;
+  a.click();
+  toast('CSV exportado!', 'ok');
+}
+
+// ── MONITORADOS ───────────────────────────────────────────
+function renderMonitored() {
+  const c = document.getElementById('mon-container');
+  if (!monitored.length) {
+    c.innerHTML = `<div class="empty" style="padding:30px"><div class="eicon">📌</div><div class="etxt">Nenhum produto monitorado</div></div>`;
+    return;
+  }
+  c.innerHTML = `<div class="mon-grid">${monitored.map(m => `
+    <div class="mon-item">
+      <div class="mon-info"><div class="mon-title">${m.title}</div><div class="mon-id">${m.id}</div></div>
+      <div class="mon-price">${fmtR(m.price)}</div>
+      <button class="rmbtn" onclick="removeMon('${m.id}')" title="Remover">✕</button>
+    </div>`).join('')}</div>`;
+}
+
+function removeMon(id) {
+  monitored = monitored.filter(m => m.id !== id);
+  renderMonitored();
+  toast('Removido do monitoramento', 'info');
+}
+
+// ── LOADING ───────────────────────────────────────────────
+function setLoading(on) {
+  document.getElementById('loading').classList.toggle('on', on);
+  document.getElementById('sbtn').disabled = on;
+  if (on) {
+    document.getElementById('products-list').innerHTML = '';
+    document.getElementById('tbl-head').style.display = 'none';
+  }
+}
+
+// ── TOAST ─────────────────────────────────────────────────
+function toast(msg, type = 'ok') {
+  const c = document.getElementById('toasts');
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type === 'err' ? 'err' : type === 'info' ? 'info' : 'ok');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── INIT ──────────────────────────────────────────────────
+toast('ML Radar conectado · API Mercado Livre 🇧🇷', 'ok');
+</script>
+</body>
+</html>
